@@ -244,11 +244,21 @@ async def extract_entities(
 
         raw_result = response.choices[0].message.content
         
+        # Strip out <think>...</think> blocks if Qwen includes them
+        import re
+        raw_result = re.sub(r'<think>.*?</think>', '', raw_result, flags=re.DOTALL).strip()
+        
         # Clean markdown if present
         if "```json" in raw_result:
             raw_result = raw_result.split("```json")[1].split("```")[0].strip()
         elif "```" in raw_result:
             raw_result = raw_result.split("```")[1].strip()
+            
+        # Fallback to finding the first { and last }
+        start_idx = raw_result.find('{')
+        end_idx = raw_result.rfind('}')
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            raw_result = raw_result[start_idx:end_idx+1]
 
         extracted = json.loads(raw_result)
         extracted = normalize_result(extracted)
