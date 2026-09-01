@@ -273,27 +273,29 @@ async def extract_entities(
         raise
 
     except Exception as e:
-        if DEBUG:
-            print(f"Groq Vision call exception: {e}")
+        import traceback
+        error_detail = f"{type(e).__name__}: {str(e)}"
+        print(f"Groq Vision call exception: {error_detail}")
+        traceback.print_exc()
 
-        # Safe fallback returning valid structured entities
-        fallback_entities = {
-            "DATE": ["12-May-2021"],
-            "EMAIL": [],
-            "EVENT": [],
-            "LOCATION": [],
-            "MEDICINE": [],
-            "MERCHANT": ["McDonald's"],
-            "MONEY": [],
-            "ORGANIZATION": [],
-            "PERSON": [],
-            "PHONE": ["9876543210"],
-            "PRODUCT": ["MAC"],
-            "TIME": [],
-            "URL": []
-        }
+        # Return error with details so we can debug
         return {
-            "success": True,
-            "filename": file.filename,
-            "entities": fallback_entities
+            "success": False,
+            "filename": file.filename if file else "unknown",
+            "error": error_detail,
+            "entities": {
+                "DATE": [],
+                "EMAIL": [],
+                "EVENT": [],
+                "LOCATION": [],
+                "MEDICINE": [],
+                "MERCHANT": [],
+                "MONEY": [],
+                "ORGANIZATION": [],
+                "PERSON": [],
+                "PHONE": [],
+                "PRODUCT": [],
+                "TIME": [],
+                "URL": []
+            }
         }

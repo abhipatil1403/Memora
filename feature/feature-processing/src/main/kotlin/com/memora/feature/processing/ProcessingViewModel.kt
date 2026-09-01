@@ -53,6 +53,7 @@ class ProcessingViewModel @Inject constructor(
     val uiState: StateFlow<ProcessingUiState> = _uiState.asStateFlow()
 
     init {
+        Timber.d("ProcessingViewModel init — imageUriString = %s", imageUriString)
         startProcessing()
     }
 
@@ -66,6 +67,14 @@ class ProcessingViewModel @Inject constructor(
             _uiState.update { it.copy(steps = steps.toList(), progress = 0.25f) }
 
             val imageBytes = readImageBytes(imageUriString)
+            Timber.d("Image bytes read: %s bytes (uri=%s)", imageBytes?.size ?: "NULL", imageUriString)
+
+            if (imageBytes == null || imageBytes.isEmpty()) {
+                Timber.e("CRITICAL: Could not read image bytes from URI: %s", imageUriString)
+                _uiState.update { it.copy(error = "Failed to read image. URI: $imageUriString") }
+                // Still continue but log clearly that we're sending garbage
+            }
+
             val requestBody = (imageBytes ?: createFallbackDummyImageBytes())
                 .toRequestBody("image/jpeg".toMediaTypeOrNull())
             val filePart = MultipartBody.Part.createFormData("file", "uploaded_image.jpg", requestBody)
@@ -79,17 +88,24 @@ class ProcessingViewModel @Inject constructor(
             var extractedEntities: Map<String, List<String>>? = null
 
             try {
+                Timber.d("Calling memoraApi.extractEntities...")
                 val response = memoraApi.extractEntities(filePart)
+                Timber.d("API response code: %d, successful: %b", response.code(), response.isSuccessful)
                 val body = response.body()
                 if (response.isSuccessful && body != null) {
+                    Timber.d("API returned success=%b, entities=%s", body.success, body.entities)
                     extractedEntities = body.entities
+                } else {
+                    val errorBody = response.errorBody()?.string()
+                    Timber.e("API error response: code=%d, errorBody=%s", response.code(), errorBody)
                 }
             } catch (e: Exception) {
-                Timber.w(e, "Backend API offline or unreachable — engaging local fallback extractor")
+                Timber.e(e, "Backend API call failed with exception")
             }
 
             // Fallback if backend server is not running locally
             if (extractedEntities == null) {
+                Timber.w("Using FALLBACK entities because API returned null")
                 extractedEntities = createFallbackEntities()
             }
 
@@ -115,19 +131,23 @@ class ProcessingViewModel @Inject constructor(
     }
 
     private fun readImageBytes(uriString: String?): ByteArray? {
-        if (uriString.isNull_or_blank()) return null
+        if (uriString.isNullOrBlank()) {
+            Timber.e("readImageBytes: uriString is null or blank")
+            return null
+        }
         return try {
             val uri = Uri.parse(uriString)
+            Timber.d("readImageBytes: parsed URI = %s, scheme = %s", uri, uri.scheme)
             context.contentResolver.openInputStream(uri)?.use { stream ->
-                stream.readBytes()
+                val bytes = stream.readBytes()
+                Timber.d("readImageBytes: successfully read %d bytes", bytes.size)
+                bytes
             }
         } catch (e: Exception) {
-            Timber.e(e, "Error reading image bytes from URI")
+            Timber.e(e, "Error reading image bytes from URI: %s", uriString)
             null
         }
     }
-
-    private fun String?.isNull_or_blank(): Boolean = this == null || this.isBlank()
 
     private fun createFallbackEntities(): Map<String, List<String>> {
         return mapOf(
