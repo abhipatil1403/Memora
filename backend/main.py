@@ -27,7 +27,10 @@ API_KEY_3 = os.getenv("GROQ_API_KEY_3", "").strip()
 
 ALL_KEYS = [k for k in [API_KEY_1, API_KEY_2, API_KEY_3] if k and k != "your_groq_api_key_here"]
 
-MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b").strip()
+MODEL = os.getenv("GROQ_MODEL", "llama-3.2-90b-vision-preview").strip()
+if "qwen" in MODEL.lower():
+    print(f"⚠️ Overriding buggy model {MODEL} with llama-3.2-90b-vision-preview")
+    MODEL = "llama-3.2-90b-vision-preview"
 DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
 
 # Validate API key
