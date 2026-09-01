@@ -21,22 +21,29 @@ else:
     load_dotenv()
 
 # Read environment variables
-API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+API_KEY_1 = os.getenv("GROQ_API_KEY", "").strip()
+API_KEY_2 = os.getenv("GROQ_API_KEY_2", "").strip()
+API_KEY_3 = os.getenv("GROQ_API_KEY_3", "").strip()
+
+ALL_KEYS = [k for k in [API_KEY_1, API_KEY_2, API_KEY_3] if k and k != "your_groq_api_key_here"]
+
 MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b").strip()
 DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
 
 # Validate API key
-if not API_KEY or API_KEY == "your_groq_api_key_here":
-    print("⚠️  WARNING: GROQ_API_KEY is not set or using placeholder in .env")
+if not ALL_KEYS:
+    print("⚠️  WARNING: No valid GROQ_API_KEY found in .env")
 
-# Initialize Groq client
-client = None
-if API_KEY:
+# Initialize Groq clients
+clients = []
+for key in ALL_KEYS:
     try:
-        client = Groq(api_key=API_KEY)
-        print(f"✅ Groq Vision AI Client initialized with model: {MODEL}")
+        clients.append(Groq(api_key=key))
     except Exception as e:
         print(f"⚠️ Groq client init notice: {e}")
+
+if clients:
+    print(f"✅ Initialized {len(clients)} Groq Vision AI Client(s) with model: {MODEL}")
 
 
 app = FastAPI(
@@ -171,7 +178,7 @@ def health():
     return {
         "status": "healthy",
         "model": MODEL,
-        "has_api_key": bool(API_KEY and API_KEY != "your_groq_api_key_here")
+        "available_clients": len(clients)
     }
 
 
@@ -215,66 +222,81 @@ async def extract_entities(
             buffer.getvalue()
         ).decode("utf-8")
 
-        if client is None:
-            raise RuntimeError("Groq client not initialized")
+        if not clients:
+            raise RuntimeError("No Groq clients initialized. Check API keys.")
 
-        # Groq Vision call (cannot use json_object because Qwen <think> tags cause Groq validation to fail with HTTP 400)
-        # We must rely on extremely strict prompt instructions instead.
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
+        last_exception = None
+        for i, client in enumerate(clients):
+            try:
+                # Groq Vision call (cannot use json_object because Qwen <think> tags cause Groq validation to fail with HTTP 400)
+                # We must rely on extremely strict prompt instructions instead.
+                response = client.chat.completions.create(
+                    model=MODEL,
+                    messages=[
                         {
-                            "type": "text",
-                            "text": PROMPT + "\n\nCRITICAL: You must output ONLY valid JSON. Begin your response with { and end with }. Do not add any conversational text outside the JSON."
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": "data:image/jpeg;base64," + image_base64
-                            }
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": PROMPT + "\n\nCRITICAL: You must output ONLY valid JSON. Begin your response with { and end with }. Do not add any conversational text outside the JSON."
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": "data:image/jpeg;base64," + image_base64
+                                    }
+                                }
+                            ]
                         }
-                    ]
+                    ],
+                    temperature=0,
+                    max_completion_tokens=8000
+                )
+
+                raw_result = response.choices[0].message.content
+                
+                # Strip out <think>...</think> blocks if Qwen includes them
+                import re
+                raw_result = re.sub(r'<think>.*?</think>', '', raw_result, flags=re.DOTALL).strip()
+                
+                # Clean markdown if present
+                if "```json" in raw_result:
+                    parts = raw_result.split("```json")
+                    if len(parts) > 1:
+                        raw_result = parts[1].split("```")[0].strip()
+                elif "```" in raw_result:
+                    parts = raw_result.split("```")
+                    if len(parts) > 1:
+                        raw_result = parts[1].strip()
+                    
+                # Fallback to finding the first { and last }
+                start_idx = raw_result.find('{')
+                end_idx = raw_result.rfind('}')
+                if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
+                    raw_result = raw_result[start_idx:end_idx+1]
+                else:
+                    raise ValueError(f"No JSON object found. Raw output snippet: {raw_result[:200]}...")
+
+                extracted = json.loads(raw_result)
+                extracted = normalize_result(extracted)
+
+                return {
+                    "success": True,
+                    "filename": file.filename,
+                    "entities": extracted
                 }
-            ],
-            temperature=0,
-            max_completion_tokens=8000
-        )
 
-        raw_result = response.choices[0].message.content
-        
-        # Strip out <think>...</think> blocks if Qwen includes them
-        import re
-        raw_result = re.sub(r'<think>.*?</think>', '', raw_result, flags=re.DOTALL).strip()
-        
-        # Clean markdown if present
-        if "```json" in raw_result:
-            parts = raw_result.split("```json")
-            if len(parts) > 1:
-                raw_result = parts[1].split("```")[0].strip()
-        elif "```" in raw_result:
-            parts = raw_result.split("```")
-            if len(parts) > 1:
-                raw_result = parts[1].strip()
-            
-        # Fallback to finding the first { and last }
-        start_idx = raw_result.find('{')
-        end_idx = raw_result.rfind('}')
-        if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
-            raw_result = raw_result[start_idx:end_idx+1]
-        else:
-            raise ValueError(f"No JSON object found. Raw output snippet: {raw_result[:200]}...")
+            except Exception as e:
+                import traceback
+                print(f"⚠️ Groq Vision call failed on client {i+1}/{len(clients)}: {e}")
+                last_exception = e
+                # If it's a JSON parse error or ValueError, it's a model generation issue, not a rate limit.
+                # However, if it's hitting max tokens, trying another key won't hurt, but mostly we want to catch RateLimitError.
+                # Since we don't have exact RateLimitError imported cleanly, we'll just try the next key for any error.
+                continue
 
-        extracted = json.loads(raw_result)
-        extracted = normalize_result(extracted)
-
-        return {
-            "success": True,
-            "filename": file.filename,
-            "entities": extracted
-        }
+        # If we exhausted all keys
+        raise last_exception or RuntimeError("All API keys failed.")
 
     except HTTPException:
         raise
