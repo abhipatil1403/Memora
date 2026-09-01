@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
-from groq import Groq
-
+from google import genai
+from google.genai import types
 
 # Robust .env file location resolution
 BASE_DIR = Path(__file__).resolve().parent
@@ -21,37 +21,27 @@ else:
     load_dotenv()
 
 # Read environment variables
-API_KEY_1 = os.getenv("GROQ_API_KEY", "").strip()
-API_KEY_2 = os.getenv("GROQ_API_KEY_2", "").strip()
-API_KEY_3 = os.getenv("GROQ_API_KEY_3", "").strip()
-
-ALL_KEYS = [k for k in [API_KEY_1, API_KEY_2, API_KEY_3] if k and k != "your_groq_api_key_here"]
-
-MODEL = os.getenv("GROQ_MODEL", "llama-3.2-90b-vision-preview").strip()
-if "qwen" in MODEL.lower():
-    print(f"⚠️ Overriding buggy model {MODEL} with llama-3.2-90b-vision-preview")
-    MODEL = "llama-3.2-90b-vision-preview"
+API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
 DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
 
 # Validate API key
-if not ALL_KEYS:
-    print("⚠️  WARNING: No valid GROQ_API_KEY found in .env")
+if not API_KEY or API_KEY == "your_gemini_api_key_here":
+    print("⚠️  WARNING: GEMINI_API_KEY is not set or using placeholder in .env")
 
-# Initialize Groq clients
-clients = []
-for key in ALL_KEYS:
+# Initialize Gemini client
+client = None
+if API_KEY:
     try:
-        clients.append(Groq(api_key=key))
+        client = genai.Client(api_key=API_KEY)
+        print(f"✅ Google Gemini AI Client initialized with model: {MODEL}")
     except Exception as e:
-        print(f"⚠️ Groq client init notice: {e}")
-
-if clients:
-    print(f"✅ Initialized {len(clients)} Groq Vision AI Client(s) with model: {MODEL}")
+        print(f"⚠️ Gemini client init notice: {e}")
 
 
 app = FastAPI(
     title="Memora AI API",
-    description="Groq Vision AI image entity extraction service for Memora",
+    description="Gemini Vision AI image entity extraction service for Memora",
     version="1.0.0"
 )
 
@@ -85,75 +75,26 @@ ENTITY_KEYS = [
 PROMPT = """
 Analyze this image and extract meaningful entities for a document-memory app.
 
-Return ONLY valid JSON.
-
 Use exactly these keys:
-
-DATE
-EMAIL
-EVENT
-LOCATION
-MEDICINE
-MERCHANT
-MONEY
-ORGANIZATION
-PERSON
-PHONE
-PRODUCT
-TIME
-URL
+DATE, EMAIL, EVENT, LOCATION, MEDICINE, MERCHANT, MONEY, ORGANIZATION, PERSON, PHONE, PRODUCT, TIME, URL.
 
 Rules:
-
 1. Extract only meaningful entities, not random OCR fragments.
-
 2. MERCHANT:
    - The business, store, restaurant, or seller associated with the document.
    - If a recognizable brand logo clearly identifies the merchant, use the full brand name.
    - Do NOT use slogans, taglines, logo letters, or logo fragments as MERCHANT.
-   - Example: "M" logo + "I'm lovin' it" → MERCHANT: ["McDonald's"]
-
 3. ORGANIZATION:
    - Companies, institutions, schools, government bodies, etc.
    - Do not duplicate the merchant when the organization is simply the same business.
-
 4. PRODUCT:
    - Extract actual named products or clearly identified products.
    - Do not extract slogans, ingredients, generic descriptive phrases, or random words.
-   - Example: "all-beef patties" is not a PRODUCT.
-   - "MAC" can be a PRODUCT if it clearly refers to the advertised product.
-
-5. Ignore:
-   - slogans
-   - taglines
-   - decorative text
-   - isolated logo letters
-   - meaningless OCR errors
-   - generic descriptive phrases
-
+5. Ignore slogans, taglines, decorative text, isolated logo letters, and meaningless OCR errors.
 6. Do not invent information.
-7. Use [] when a category is absent.
+7. Use empty arrays when a category is absent.
 8. Maximum 5 values per category.
-9. Return JSON only.
-10. Preserve visible text where appropriate, but normalize obvious brand names when a logo clearly identifies the brand.
-
-Format:
-
-{
-  "DATE": [],
-  "EMAIL": [],
-  "EVENT": [],
-  "LOCATION": [],
-  "MEDICINE": [],
-  "MERCHANT": [],
-  "MONEY": [],
-  "ORGANIZATION": [],
-  "PERSON": [],
-  "PHONE": [],
-  "PRODUCT": [],
-  "TIME": [],
-  "URL": []
-}
+9. Preserve visible text where appropriate, but normalize obvious brand names when a logo clearly identifies the brand.
 """
 
 
@@ -181,7 +122,7 @@ def health():
     return {
         "status": "healthy",
         "model": MODEL,
-        "available_clients": len(clients)
+        "has_api_key": client is not None
     }
 
 
@@ -221,85 +162,44 @@ async def extract_entities(
             quality=85
         )
 
-        image_base64 = base64.b64encode(
-            buffer.getvalue()
-        ).decode("utf-8")
+        if client is None:
+            raise RuntimeError("Gemini client not initialized. Check GEMINI_API_KEY.")
 
-        if not clients:
-            raise RuntimeError("No Groq clients initialized. Check API keys.")
-
-        last_exception = None
-        for i, client in enumerate(clients):
-            try:
-                # Groq Vision call (cannot use json_object because Qwen <think> tags cause Groq validation to fail with HTTP 400)
-                # We must rely on extremely strict prompt instructions instead.
-                response = client.chat.completions.create(
-                    model=MODEL,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": PROMPT + "\n\nCRITICAL: You must output ONLY valid JSON. Begin your response with { and end with }. Do not add any conversational text outside the JSON."
-                                },
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": "data:image/jpeg;base64," + image_base64
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    temperature=0,
-                    max_completion_tokens=8000
-                )
-
-                raw_result = response.choices[0].message.content
-                
-                # Strip out <think>...</think> blocks if Qwen includes them
-                import re
-                raw_result = re.sub(r'<think>.*?</think>', '', raw_result, flags=re.DOTALL).strip()
-                
-                # Clean markdown if present
-                if "```json" in raw_result:
-                    parts = raw_result.split("```json")
-                    if len(parts) > 1:
-                        raw_result = parts[1].split("```")[0].strip()
-                elif "```" in raw_result:
-                    parts = raw_result.split("```")
-                    if len(parts) > 1:
-                        raw_result = parts[1].strip()
-                    
-                # Fallback to finding the first { and last }
-                start_idx = raw_result.find('{')
-                end_idx = raw_result.rfind('}')
-                if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
-                    raw_result = raw_result[start_idx:end_idx+1]
-                else:
-                    raise ValueError(f"No JSON object found. Raw output snippet: {raw_result[:200]}...")
-
-                extracted = json.loads(raw_result)
-                extracted = normalize_result(extracted)
-
-                return {
-                    "success": True,
-                    "filename": file.filename,
-                    "entities": extracted
+        # Gemini Vision Call with Structured Outputs
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=[
+                types.Part.from_bytes(
+                    data=buffer.getvalue(),
+                    mime_type="image/jpeg"
+                ),
+                PROMPT
+            ],
+            config=types.GenerateContentConfig(
+                temperature=0.0,
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "OBJECT",
+                    "properties": {
+                        key: {
+                            "type": "ARRAY",
+                            "items": {"type": "STRING"}
+                        } for key in ENTITY_KEYS
+                    },
+                    "required": ENTITY_KEYS
                 }
+            )
+        )
 
-            except Exception as e:
-                import traceback
-                print(f"⚠️ Groq Vision call failed on client {i+1}/{len(clients)}: {e}")
-                last_exception = e
-                # If it's a JSON parse error or ValueError, it's a model generation issue, not a rate limit.
-                # However, if it's hitting max tokens, trying another key won't hurt, but mostly we want to catch RateLimitError.
-                # Since we don't have exact RateLimitError imported cleanly, we'll just try the next key for any error.
-                continue
+        raw_result = response.text
+        extracted = json.loads(raw_result)
+        extracted = normalize_result(extracted)
 
-        # If we exhausted all keys
-        raise last_exception or RuntimeError("All API keys failed.")
+        return {
+            "success": True,
+            "filename": file.filename,
+            "entities": extracted
+        }
 
     except HTTPException:
         raise
@@ -307,7 +207,7 @@ async def extract_entities(
     except Exception as e:
         import traceback
         error_detail = f"{type(e).__name__}: {str(e)}"
-        print(f"Groq Vision call exception: {error_detail}")
+        print(f"Gemini Vision call exception: {error_detail}")
         traceback.print_exc()
 
         # Return error with details so we can debug
@@ -315,19 +215,5 @@ async def extract_entities(
             "success": False,
             "filename": file.filename if file else "unknown",
             "error": error_detail,
-            "entities": {
-                "DATE": [],
-                "EMAIL": [],
-                "EVENT": [],
-                "LOCATION": [],
-                "MEDICINE": [],
-                "MERCHANT": [],
-                "MONEY": [],
-                "ORGANIZATION": [],
-                "PERSON": [],
-                "PHONE": [],
-                "PRODUCT": [],
-                "TIME": [],
-                "URL": []
-            }
+            "entities": { key: [] for key in ENTITY_KEYS }
         }
