@@ -218,7 +218,8 @@ async def extract_entities(
         if client is None:
             raise RuntimeError("Groq client not initialized")
 
-        # Groq Vision call (requires 'json' in lowercase in the prompt and response_format)
+        # Groq Vision call (cannot use json_object because Qwen <think> tags cause Groq validation to fail with HTTP 400)
+        # We must rely on extremely strict prompt instructions instead.
         response = client.chat.completions.create(
             model=MODEL,
             messages=[
@@ -227,7 +228,7 @@ async def extract_entities(
                     "content": [
                         {
                             "type": "text",
-                            "text": PROMPT + "\n\nPlease ensure the output is strictly in json format."
+                            "text": PROMPT + "\n\nCRITICAL: You must output ONLY valid JSON. Begin your response with { and end with }. Do not add any conversational text outside the JSON."
                         },
                         {
                             "type": "image_url",
@@ -239,8 +240,7 @@ async def extract_entities(
                 }
             ],
             temperature=0,
-            max_completion_tokens=2048,
-            response_format={"type": "json_object"}
+            max_completion_tokens=2048
         )
 
         raw_result = response.choices[0].message.content
