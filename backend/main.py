@@ -240,7 +240,7 @@ async def extract_entities(
                 }
             ],
             temperature=0,
-            max_completion_tokens=2048
+            max_completion_tokens=8000
         )
 
         raw_result = response.choices[0].message.content
@@ -251,15 +251,21 @@ async def extract_entities(
         
         # Clean markdown if present
         if "```json" in raw_result:
-            raw_result = raw_result.split("```json")[1].split("```")[0].strip()
+            parts = raw_result.split("```json")
+            if len(parts) > 1:
+                raw_result = parts[1].split("```")[0].strip()
         elif "```" in raw_result:
-            raw_result = raw_result.split("```")[1].strip()
+            parts = raw_result.split("```")
+            if len(parts) > 1:
+                raw_result = parts[1].strip()
             
         # Fallback to finding the first { and last }
         start_idx = raw_result.find('{')
         end_idx = raw_result.rfind('}')
-        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+        if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
             raw_result = raw_result[start_idx:end_idx+1]
+        else:
+            raise ValueError(f"No JSON object found. Raw output snippet: {raw_result[:200]}...")
 
         extracted = json.loads(raw_result)
         extracted = normalize_result(extracted)
