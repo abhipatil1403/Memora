@@ -218,7 +218,7 @@ async def extract_entities(
         if client is None:
             raise RuntimeError("Groq client not initialized")
 
-        # Groq Vision call
+        # Groq Vision call (Do not use json_object format as it fails validation with qwen)
         response = client.chat.completions.create(
             model=MODEL,
             messages=[
@@ -239,13 +239,17 @@ async def extract_entities(
                 }
             ],
             temperature=0,
-            max_completion_tokens=2048,
-            response_format={
-                "type": "json_object"
-            }
+            max_completion_tokens=2048
         )
 
         raw_result = response.choices[0].message.content
+        
+        # Clean markdown if present
+        if "```json" in raw_result:
+            raw_result = raw_result.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw_result:
+            raw_result = raw_result.split("```")[1].strip()
+
         extracted = json.loads(raw_result)
         extracted = normalize_result(extracted)
 
