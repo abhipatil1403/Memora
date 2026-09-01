@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Memora</string>
+    <string name="shortcut_capture_short">Capture</string>
+    <string name="shortcut_capture_long">Capture New Memory</string>
+    <string name="shortcut_search_short">Search</string>
+    <string name="shortcut_search_long">Search Memories</string>
+</resources>

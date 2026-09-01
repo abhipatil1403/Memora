@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "788522801671",
+    "project_id": "memora-c0f9a",
+    "storage_bucket": "memora-c0f9a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:788522801671:android:b4ac59209b9b5ac569a8a2",
+        "android_client_info": {
+          "package_name": "com.memora"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "788522801671-l2vha8hen2o80569l5aucjkuu3bk6mqp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.memora",
+            "certificate_hash": "cc796c43ccdc59567c921e416d720342d48f5479"
+          }
+        },
+        {
+          "client_id": "788522801671-h5rhj0u8qir9mapr6bovcvvpi7398h9u.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBkNJPeSPZcpwrEkz3_bCQesCnvAGyP_Ow"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "788522801671-h5rhj0u8qir9mapr6bovcvvpi7398h9u.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

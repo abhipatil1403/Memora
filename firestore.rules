@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // User Profile
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      // User Memories collection
+      match /memories/{memoryId} {
+        allow read, write, delete: if isOwner(userId);
+
+        // Memory Version History sub-collection
+        match /versions/{versionId} {
+          allow read, write, delete: if isOwner(userId);
+        }
+      }
+
+      // User Collections
+      match /collections/{collectionId} {
+        allow read, write, delete: if isOwner(userId);
+      }
+
+      // User Reminders
+      match /reminders/{reminderId} {
+        allow read, write, delete: if isOwner(userId);
+      }
+    }
+  }
+}
