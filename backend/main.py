@@ -194,6 +194,9 @@ async def extract_entities(
             image = Image.open(
                 io.BytesIO(image_bytes)
             ).convert("RGB")
+            
+            # Resize image to prevent massive payloads (max 1024x1024)
+            image.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
         except Exception:
             raise HTTPException(
                 status_code=400,
@@ -205,7 +208,7 @@ async def extract_entities(
         image.save(
             buffer,
             format="JPEG",
-            quality=95
+            quality=85
         )
 
         image_base64 = base64.b64encode(
