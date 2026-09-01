@@ -22,7 +22,7 @@ else:
 
 # Read environment variables
 API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
 DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
 
 # Validate API key
