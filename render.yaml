@@ -3,10 +3,14 @@ services:
     name: memora-backend
     env: python
     rootDir: backend
+    autoDeployTrigger: commit
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.0
-      - key: GROQ_API_KEY
+      - key: GROQ_API_KEY_2
+        sync: false
+      - key: GROQ_MODEL
         sync: false

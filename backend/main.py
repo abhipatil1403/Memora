@@ -2,46 +2,41 @@ import os
 import json
 import base64
 import io
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from PIL import Image
-from google import genai
-from google.genai import types
+from openai import APIConnectionError, APIStatusError, OpenAI
 
 # Robust .env file location resolution
 BASE_DIR = Path(__file__).resolve().parent
 ENV_PATH = BASE_DIR / ".env"
 
-if ENV_PATH.exists():
-    load_dotenv(dotenv_path=ENV_PATH)
-else:
-    load_dotenv()
+load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 # Read environment variables
-API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY_2", "").strip()
+MODEL = os.getenv("GROQ_MODEL", "").strip()
 DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
 
-# Validate API key
-if not API_KEY or API_KEY == "your_gemini_api_key_here":
-    print("⚠️  WARNING: GEMINI_API_KEY is not set or using placeholder in .env")
+logger = logging.getLogger(__name__)
 
-# Initialize Gemini client
-client = None
-if API_KEY:
-    try:
-        client = genai.Client(api_key=API_KEY)
-        print(f"✅ Google Gemini AI Client initialized with model: {MODEL}")
-    except Exception as e:
-        print(f"⚠️ Gemini client init notice: {e}")
+groq_client = None
+if not MODEL:
+    logger.warning("GROQ_MODEL is not configured")
+if GROQ_API_KEY:
+    groq_client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
+else:
+    logger.warning("GROQ_API_KEY_2 is not configured")
 
 
 app = FastAPI(
     title="Memora AI API",
-    description="Gemini Vision AI image entity extraction service for Memora",
+    description="Groq Vision AI image entity extraction service for Memora",
     version="1.0.0"
 )
 
@@ -56,6 +51,13 @@ app.add_middleware(
 
 
 ENTITY_KEYS = [
+    "IMAGE_TYPE",
+    "DOCUMENT_TYPE",
+    "TITLE",
+    "SUMMARY",
+    "ACTION_ITEM",
+    "REMINDER",
+    "MEETING",
     "DATE",
     "EMAIL",
     "EVENT",
@@ -67,34 +69,54 @@ ENTITY_KEYS = [
     "PERSON",
     "PHONE",
     "PRODUCT",
+    "QR_CONTENT",
+    "REFERENCE_NUMBER",
+    "ACCOUNT_NUMBER",
+    "SOCIAL_HANDLE",
     "TIME",
     "URL"
 ]
 
 
 PROMPT = """
-Analyze this image and extract meaningful entities for a document-memory app.
+Analyze this image completely for a document-memory app. It may be a receipt, a
+poster, timetable, business card, medicine label, screenshot, handwritten note,
+whiteboard, QR code, invitation, certificate, calendar, document, or a normal photo.
+First understand what the image is; then extract every useful, visible detail that
+could help the user search, act on, or remember it.
 
 Use exactly these keys:
-DATE, EMAIL, EVENT, LOCATION, MEDICINE, MERCHANT, MONEY, ORGANIZATION, PERSON, PHONE, PRODUCT, TIME, URL.
+IMAGE_TYPE, DOCUMENT_TYPE, TITLE, SUMMARY, ACTION_ITEM, REMINDER, MEETING, DATE,
+EMAIL, EVENT, LOCATION, MEDICINE, MERCHANT, MONEY, ORGANIZATION, PERSON, PHONE,
+PRODUCT, QR_CONTENT, REFERENCE_NUMBER, ACCOUNT_NUMBER, SOCIAL_HANDLE, TIME, URL.
 
 Rules:
-1. Extract only meaningful entities, not random OCR fragments.
-2. MERCHANT:
+1. IMAGE_TYPE is a short visual classification (for example "receipt", "screenshot",
+   "handwritten note", "business card", "event poster", or "photo"). DOCUMENT_TYPE
+   is a more specific subtype when applicable. TITLE is a concise user-facing title.
+   SUMMARY is one short factual summary. Return a single value for each of these keys.
+2. Extract only meaningful entities, not random OCR fragments. Preserve useful visible
+   OCR text in ACTION_ITEM or SUMMARY if it does not fit another category.
+3. ACTION_ITEM contains actionable tasks or instructions. REMINDER contains time-bound
+   tasks in human-readable form. When a meeting link exists, each MEETING value must include
+   that complete URL so it can be opened directly; it must also appear in URL.
+4. Extract QR_CONTENT when a QR/barcode payload is visibly available or clearly decoded.
+   Extract reference/account/order/booking numbers only when they are explicitly shown.
+   Never infer sensitive values.
+5. MERCHANT:
    - The business, store, restaurant, or seller associated with the document.
    - If a recognizable brand logo clearly identifies the merchant, use the full brand name.
    - Do NOT use slogans, taglines, logo letters, or logo fragments as MERCHANT.
-3. ORGANIZATION:
+6. ORGANIZATION:
    - Companies, institutions, schools, government bodies, etc.
    - Do not duplicate the merchant when the organization is simply the same business.
-4. PRODUCT:
+7. PRODUCT:
    - Extract actual named products or clearly identified products.
    - Do not extract slogans, ingredients, generic descriptive phrases, or random words.
-5. Ignore slogans, taglines, decorative text, isolated logo letters, and meaningless OCR errors.
-6. Do not invent information.
-7. Use empty arrays when a category is absent.
-8. Maximum 5 values per category.
-9. Preserve visible text where appropriate, but normalize obvious brand names when a logo clearly identifies the brand.
+8. Ignore decorative fragments and meaningless OCR errors. Do not invent information.
+9. Use empty arrays when a category is absent. Maximum 10 values per category.
+10. URLs must be complete, opening-safe URLs. Recognize Google Meet, Zoom, Teams and
+    other meeting links. Dates and times must preserve the visible text; do not assume a year.
 """
 
 
@@ -104,7 +126,7 @@ def normalize_result(data):
         values = data.get(key, [])
         if not isinstance(values, list):
             values = [values]
-        result[key] = values[:5]
+        result[key] = [str(value).strip() for value in values if str(value).strip()][:10]
     return result
 
 
@@ -119,11 +141,13 @@ def root():
 
 @app.get("/health")
 def health():
-    return {
-        "status": "healthy",
+    ready = groq_client is not None and bool(MODEL)
+    return JSONResponse(status_code=200 if ready else 503, content={
+        "status": "healthy" if ready else "unhealthy",
         "model": MODEL,
-        "has_api_key": client is not None
-    }
+        "provider": "groq",
+        "has_api_key": groq_client is not None
+    })
 
 
 @app.post("/api/extract")
@@ -162,36 +186,19 @@ async def extract_entities(
             quality=85
         )
 
-        if client is None:
-            raise RuntimeError("Gemini client not initialized. Check GEMINI_API_KEY.")
-
-        # Gemini Vision Call with Structured Outputs
-        response = client.models.generate_content(
+        if groq_client is None or not MODEL:
+            raise HTTPException(status_code=503, detail="Groq is not configured on the server.")
+        image_data_url = "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+        response = groq_client.chat.completions.create(
             model=MODEL,
-            contents=[
-                types.Part.from_bytes(
-                    data=buffer.getvalue(),
-                    mime_type="image/jpeg"
-                ),
-                PROMPT
-            ],
-            config=types.GenerateContentConfig(
-                temperature=0.0,
-                response_mime_type="application/json",
-                response_schema={
-                    "type": "OBJECT",
-                    "properties": {
-                        key: {
-                            "type": "ARRAY",
-                            "items": {"type": "STRING"}
-                        } for key in ENTITY_KEYS
-                    },
-                    "required": ENTITY_KEYS
-                }
-            )
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[{"role": "system", "content": "Return valid JSON."}, {"role": "user", "content": [
+                {"type": "text", "text": PROMPT},
+                {"type": "image_url", "image_url": {"url": image_data_url}}
+            ]}]
         )
-
-        raw_result = response.text
+        raw_result = response.choices[0].message.content
         extracted = json.loads(raw_result)
         extracted = normalize_result(extracted)
 
@@ -204,16 +211,38 @@ async def extract_entities(
     except HTTPException:
         raise
 
-    except Exception as e:
-        import traceback
-        error_detail = f"{type(e).__name__}: {str(e)}"
-        print(f"Gemini Vision call exception: {error_detail}")
-        traceback.print_exc()
+    except APIStatusError as exc:
+        status = exc.status_code
+        logger.error("Groq API request failed: HTTP %s (%s)", status, type(exc).__name__)
+        messages = {
+            400: "Groq could not process this image. Please try another image.",
+            401: "Groq authentication failed. Please check the server configuration.",
+            429: "Groq rate limit reached. Please try again shortly.",
+            500: "Groq service encountered an error. Please try again.",
+            503: "Groq service is temporarily unavailable. Please try again.",
+        }
+        return JSONResponse(status_code=status, content={
+            "success": False,
+            "filename": file.filename,
+            "error": messages.get(status, "Groq request failed. Please try again."),
+            "entities": {key: [] for key in ENTITY_KEYS},
+        })
 
-        # Return error with details so we can debug
+    except APIConnectionError as exc:
+        logger.error("Groq API connection failed (%s)", type(exc).__name__)
+        return JSONResponse(status_code=503, content={
+            "success": False,
+            "filename": file.filename,
+            "error": "Groq service is temporarily unavailable. Please try again.",
+            "entities": {key: [] for key in ENTITY_KEYS},
+        })
+
+    except Exception as e:
+        logger.error("Groq extraction failed (%s)", type(e).__name__)
+
         return {
             "success": False,
             "filename": file.filename if file else "unknown",
-            "error": error_detail,
+            "error": "Image extraction failed. Please try again.",
             "entities": { key: [] for key in ENTITY_KEYS }
         }

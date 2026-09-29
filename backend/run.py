@@ -6,10 +6,7 @@ import uvicorn
 BASE_DIR = Path(__file__).resolve().parent
 ENV_PATH = BASE_DIR / ".env"
 
-if ENV_PATH.exists():
-    load_dotenv(dotenv_path=ENV_PATH)
-else:
-    load_dotenv()
+load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 HOST = os.getenv("HOST", "0.0.0.0").strip()
 PORT = int(os.getenv("PORT", "8000").strip())
