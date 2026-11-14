@@ -88,6 +88,7 @@ fun HomeScreen(
     onNavigateToSearch: () -> Unit,
     onNavigateToProfile: () -> Unit,
     onNavigateToCollections: () -> Unit = onNavigateToLibrary,
+    onNavigateToFilteredLibrary: (String) -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -139,7 +140,10 @@ fun HomeScreen(
                 item {
                     SmartCollectionsRow(
                         collections = state.collections,
-                        onCollectionClick = { onNavigateToCollections() }
+                        onTitleClick = onNavigateToCollections,
+                        onCollectionClick = { collection ->
+                            onNavigateToFilteredLibrary(collection.type.name)
+                        }
                     )
                 }
 
@@ -287,17 +291,34 @@ private fun HomeHeader(
 @Composable
 private fun SmartCollectionsRow(
     collections: List<SmartCollection>,
+    onTitleClick: () -> Unit = {},
     onCollectionClick: (SmartCollection) -> Unit
 ) {
     val colors = MemoraTheme.colors
 
     Column(modifier = Modifier.padding(start = MemoraTheme.spacing.space4)) {
-        Text(
-            text = "Collections",
-            style = MemoraTheme.typography.heading,
-            color = colors.textPrimary,
-            fontWeight = FontWeight.SemiBold
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(end = MemoraTheme.spacing.space4),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Collections",
+                style = MemoraTheme.typography.heading,
+                color = colors.textPrimary,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable(onClick = onTitleClick)
+            )
+            Text(
+                text = "See All",
+                style = MemoraTheme.typography.bodySmall,
+                color = colors.primary,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable(onClick = onTitleClick)
+            )
+        }
         Spacer(modifier = Modifier.height(MemoraTheme.spacing.space3))
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(MemoraTheme.spacing.space2)

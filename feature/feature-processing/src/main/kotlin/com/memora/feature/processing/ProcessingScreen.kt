@@ -129,7 +129,8 @@ fun ProcessingScreen(
 
             MemoraButton(
                 onClick = {
-                    state.resultMemoryId?.let { onNavigateToResult(it) } ?: onNavigateToResult("fallback")
+                    val memId = state.resultMemoryId ?: "res_${System.currentTimeMillis()}"
+                    onNavigateToResult(memId)
                 },
                 text = "Continue to View",
                 modifier = Modifier.fillMaxWidth()

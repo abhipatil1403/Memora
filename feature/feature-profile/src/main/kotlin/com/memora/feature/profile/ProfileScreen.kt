@@ -100,7 +100,7 @@ fun ProfileScreen(
                         .background(colors.primaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (!state.user?.photoUrl.isNull_or_blank()) {
+                    if (!state.user?.photoUrl.isNullOrBlank()) {
                         AsyncImage(
                             model = state.user?.photoUrl,
                             contentDescription = userName,

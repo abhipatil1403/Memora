@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
 @Serializable data object OnboardingKey : NavKey
 @Serializable data object AuthKey : NavKey
 @Serializable data object HomeKey : NavKey
-@Serializable data object LibraryKey : NavKey
+@Serializable data class LibraryKey(val collectionType: String? = null) : NavKey
 @Serializable data object CaptureKey : NavKey
 @Serializable data class ProcessingKey(val imageId: String) : NavKey
 @Serializable data class ResultKey(val memoryId: String) : NavKey

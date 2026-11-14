@@ -47,7 +47,20 @@ class CollectionsViewModel @Inject constructor(
                         SmartCollection(CollectionType.DOCUMENTS, "Documents", memories.count { it.category == Category.DOCUMENT }, "description"),
                         SmartCollection(CollectionType.COLLEGE, "College", memories.count { it.category in listOf(Category.WHITEBOARD, Category.NOTICE, Category.TIMETABLE, Category.CERTIFICATE) }, "school"),
                         SmartCollection(CollectionType.BUSINESS, "Business", memories.count { it.category == Category.CARD }, "work"),
-                        SmartCollection(CollectionType.MEDICAL, "Medical", memories.count { it.category == Category.PRESCRIPTION }, "local_hospital"),
+                        SmartCollection(
+                            CollectionType.MEDICAL,
+                            "Medical",
+                            memories.count {
+                                it.category == Category.PRESCRIPTION ||
+                                        it.title.contains("medical", ignoreCase = true) ||
+                                        it.title.contains("prescription", ignoreCase = true) ||
+                                        it.summary.contains("medicine", ignoreCase = true) ||
+                                        it.summary.contains("doctor", ignoreCase = true) ||
+                                        it.summary.contains("hospital", ignoreCase = true) ||
+                                        it.tags.any { tag -> tag.value.contains("medic", ignoreCase = true) || tag.value.contains("health", ignoreCase = true) }
+                            },
+                            "local_hospital"
+                        ),
                         SmartCollection(CollectionType.IMPORTANT, "Important", memories.count { it.importance >= 0.8 }, "star"),
                         SmartCollection(CollectionType.FAVORITES, "Favorites", memories.count { it.isFavorite }, "favorite")
                     )

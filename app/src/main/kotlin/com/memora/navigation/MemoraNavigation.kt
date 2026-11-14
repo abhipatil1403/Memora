@@ -81,10 +81,13 @@ fun MemoraNavigation(startIntentAction: String? = null) {
                 HomeScreen(
                     onNavigateToCapture = { backStack.add(CaptureKey) },
                     onNavigateToMemoryDetail = { id -> backStack.add(MemoryDetailKey(id)) },
-                    onNavigateToLibrary = { backStack.add(LibraryKey) },
+                    onNavigateToLibrary = { backStack.add(LibraryKey()) },
                     onNavigateToSearch = { backStack.add(SearchKey) },
                     onNavigateToProfile = { backStack.add(ProfileKey) },
                     onNavigateToCollections = { backStack.add(CollectionsKey) },
+                    onNavigateToFilteredLibrary = { collectionType ->
+                        backStack.add(LibraryKey(collectionType = collectionType))
+                    },
                     modifier = Modifier.safeDrawingPadding()
                 )
             }
@@ -112,8 +115,9 @@ fun MemoraNavigation(startIntentAction: String? = null) {
             }
 
             // ── Result ──
-            entry<ResultKey> {
+            entry<ResultKey> { key ->
                 ResultScreen(
+                    memoryId = key.memoryId,
                     onNavigateBack = { backStack.removeLastOrNull() },
                     onNavigateToHome = {
                         backStack.clear()
@@ -123,8 +127,9 @@ fun MemoraNavigation(startIntentAction: String? = null) {
             }
 
             // ── Library ──
-            entry<LibraryKey> {
+            entry<LibraryKey> { key ->
                 LibraryScreen(
+                    collectionType = key.collectionType,
                     onNavigateBack = { backStack.removeLastOrNull() },
                     onNavigateToMemoryDetail = { id -> backStack.add(MemoryDetailKey(id)) }
                 )
@@ -142,7 +147,9 @@ fun MemoraNavigation(startIntentAction: String? = null) {
             entry<CollectionsKey> {
                 CollectionsScreen(
                     onNavigateBack = { backStack.removeLastOrNull() },
-                    onCollectionClick = { _ -> backStack.add(LibraryKey) }
+                    onCollectionClick = { collectionName ->
+                        backStack.add(LibraryKey(collectionType = collectionName))
+                    }
                 )
             }
 

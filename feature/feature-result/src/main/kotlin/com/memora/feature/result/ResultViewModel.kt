@@ -46,14 +46,23 @@ class ResultViewModel @Inject constructor(
     private val localReminderScheduler: LocalReminderScheduler
 ) : ViewModel() {
 
+    private var currentProcessedId: String? = null
+
     private val _uiState = MutableStateFlow(ResultUiState())
     val uiState: StateFlow<ResultUiState> = _uiState.asStateFlow()
 
-    init {
-        loadResult()
+    fun resetState() {
+        currentProcessedId = null
+        _uiState.value = ResultUiState(isLoading = true)
     }
 
-    private fun loadResult() {
+    fun loadResult(memoryId: String? = null) {
+        if (memoryId != null && memoryId == currentProcessedId && _uiState.value.memory != null) {
+            return
+        }
+        currentProcessedId = memoryId
+        _uiState.value = ResultUiState(isLoading = true)
+
         viewModelScope.launch {
             val entities = extractedEntitiesHolder.getExtractedEntities()
             val uri = extractedEntitiesHolder.getLastImageUri()
@@ -189,10 +198,11 @@ class ResultViewModel @Inject constructor(
                 else -> 0.65
             }
 
-            val memoryId = "mem_${System.currentTimeMillis()}"
+            val actualMemoryId = memoryId?.takeIf { it.isNotBlank() && !it.startsWith("fallback") && !it.startsWith("result_") }
+                ?: "mem_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
 
             val newMemory = Memory(
-                id = memoryId,
+                id = actualMemoryId,
                 imageUrl = uri ?: "",
                 thumbnailUrl = uri ?: "",
                 title = derivedTitle,
@@ -228,7 +238,7 @@ class ResultViewModel @Inject constructor(
                     reminderDao.insertReminder(
                         ReminderEntity(
                             id = remId,
-                            memoryId = memoryId,
+                            memoryId = actualMemoryId,
                             title = remText.take(60),
                             description = "From: $derivedTitle",
                             dateTime = triggerTime,

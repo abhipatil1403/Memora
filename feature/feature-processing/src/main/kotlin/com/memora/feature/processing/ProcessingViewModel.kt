@@ -9,6 +9,7 @@ import com.memora.core.common.cache.ExtractedEntitiesHolder
 import com.memora.core.network.api.MemoraApi
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,17 +49,53 @@ class ProcessingViewModel @Inject constructor(
 ) : ViewModel() {
 
     private var currentImageUriString: String? = null
+    private var processingJob: Job? = null
 
     private val _uiState = MutableStateFlow(ProcessingUiState())
     val uiState: StateFlow<ProcessingUiState> = _uiState.asStateFlow()
 
+    fun resetState() {
+        processingJob?.cancel()
+        processingJob = null
+        currentImageUriString = null
+        _uiState.value = ProcessingUiState(
+            steps = listOf(
+                ProcessingStep("Uploading image"),
+                ProcessingStep("Analyzing image..."),
+                ProcessingStep("Extracting entities"),
+                ProcessingStep("Formatting results")
+            ),
+            progress = 0f,
+            isComplete = false,
+            resultMemoryId = null,
+            error = null
+        )
+    }
+
     fun startProcessing(imageUriString: String) {
-        if (currentImageUriString == imageUriString) return
+        processingJob?.cancel()
         currentImageUriString = imageUriString
         Timber.d("ProcessingViewModel startProcessing — imageUriString = %s", imageUriString)
-        
-        viewModelScope.launch {
-            _uiState.update { it.copy(error = null) }
+
+        // Clear cached entities from any previous run immediately
+        extractedEntitiesHolder.clear()
+
+        // Reset UI state to fresh processing mode
+        val initialSteps = listOf(
+            ProcessingStep("Uploading image", isActive = true),
+            ProcessingStep("Analyzing image..."),
+            ProcessingStep("Extracting entities"),
+            ProcessingStep("Formatting results")
+        )
+        _uiState.value = ProcessingUiState(
+            steps = initialSteps,
+            progress = 0.15f,
+            isComplete = false,
+            resultMemoryId = null,
+            error = null
+        )
+
+        processingJob = viewModelScope.launch {
             val steps = _uiState.value.steps.toMutableList()
 
             // Step 0: Uploading image
@@ -131,7 +168,7 @@ class ProcessingViewModel @Inject constructor(
                     steps = steps.toList(),
                     progress = 1.0f,
                     isComplete = true,
-                    resultMemoryId = "result_${System.currentTimeMillis()}"
+                    resultMemoryId = "mem_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(6)}"
                 )
             }
         }

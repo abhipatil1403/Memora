@@ -36,6 +36,7 @@ class MemoryDetailViewModel @Inject constructor(
     }
 
     fun loadMemory(memoryId: String) {
+        _uiState.value = MemoryDetailUiState(memory = null, isLoading = true)
         viewModelScope.launch {
             memoryRepository.getMemoryById(memoryId).collect { memory ->
                 _uiState.value = MemoryDetailUiState(memory = memory, isLoading = false)

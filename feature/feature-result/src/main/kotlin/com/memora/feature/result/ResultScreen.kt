@@ -78,10 +78,15 @@ import kotlinx.coroutines.delay
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ResultScreen(
+    memoryId: String,
     onNavigateBack: () -> Unit,
     onNavigateToHome: () -> Unit,
     viewModel: ResultViewModel = hiltViewModel()
 ) {
+    LaunchedEffect(memoryId) {
+        viewModel.loadResult(memoryId)
+    }
+
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = MemoraTheme.colors
 
@@ -120,7 +125,10 @@ fun ResultScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onNavigateBack) {
+                IconButton(onClick = {
+                    viewModel.resetState()
+                    onNavigateBack()
+                }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.textPrimary)
                 }
                 Row {
@@ -288,7 +296,10 @@ fun ResultScreen(
         item {
             Spacer(modifier = Modifier.height(MemoraTheme.spacing.space6))
             MemoraButton(
-                onClick = onNavigateToHome,
+                onClick = {
+                    viewModel.resetState()
+                    onNavigateToHome()
+                },
                 text = "Done",
                 modifier = Modifier
                     .fillMaxWidth()
