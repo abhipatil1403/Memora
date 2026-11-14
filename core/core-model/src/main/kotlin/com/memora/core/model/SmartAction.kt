@@ -1,5 +1,8 @@
 package com.memora.core.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class ActionType(val displayLabel: String) {
     OPEN_URL("Open Website"),
     CALL("Call"),
@@ -9,6 +12,7 @@ enum class ActionType(val displayLabel: String) {
     OPEN_LINK("Open Link")
 }
 
+@Serializable
 data class SmartAction(
     val type: ActionType,
     val label: String,

@@ -6,5 +6,6 @@ import kotlinx.serialization.Serializable
 data class ExtractEntitiesResponseDto(
     val success: Boolean = false,
     val filename: String? = null,
+    val error: String? = null,
     val entities: Map<String, List<String>> = emptyMap()
 )

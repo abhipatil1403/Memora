@@ -24,6 +24,8 @@ kotlin {
 }
 
 dependencies {
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.work.runtime)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.timber)

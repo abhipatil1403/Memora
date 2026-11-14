@@ -15,6 +15,15 @@
         { "fieldPath": "isFavorite", "order": "ASCENDING" },
         { "fieldPath": "capturedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "reminders",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "isCompleted", "order": "ASCENDING" },
+        { "fieldPath": "notifiedAt", "order": "ASCENDING" },
+        { "fieldPath": "dateTime", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

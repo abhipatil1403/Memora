@@ -2,11 +2,21 @@ package com.memora.core.database.mapper
 
 import com.memora.core.database.entity.MemoryEntity
 import com.memora.core.model.Category
+import com.memora.core.model.ExtractedEntity
 import com.memora.core.model.Memory
+import com.memora.core.model.SmartAction
 import com.memora.core.model.Tag
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+
+private val json = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+    coerceInputValues = true
+}
 
 fun MemoryEntity.toDomainModel(): Memory {
     val categoryEnum = try {
@@ -16,6 +26,26 @@ fun MemoryEntity.toDomainModel(): Memory {
     }
 
     val tagList = tags.split(",").filter { it.isNotBlank() }.map { Tag(it.trim()) }
+
+    val entityList = try {
+        if (entities.isNotBlank() && entities != "[]") {
+            json.decodeFromString<List<ExtractedEntity>>(entities)
+        } else {
+            emptyList()
+        }
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    val actionList = try {
+        if (actions.isNotBlank() && actions != "[]") {
+            json.decodeFromString<List<SmartAction>>(actions)
+        } else {
+            emptyList()
+        }
+    } catch (_: Exception) {
+        emptyList()
+    }
 
     return Memory(
         id = id,
@@ -28,8 +58,8 @@ fun MemoryEntity.toDomainModel(): Memory {
         overallConfidence = overallConfidence,
         detectedLanguage = detectedLanguage,
         tags = tagList,
-        entities = emptyList(),
-        actions = emptyList(),
+        entities = entityList,
+        actions = actionList,
         suggestedReminders = emptyList(),
         relatedCategories = emptyList(),
         extractedDate = extractedDate?.let { try { LocalDate.parse(it) } catch (_: Exception) { null } },
@@ -49,6 +79,18 @@ fun MemoryEntity.toDomainModel(): Memory {
 fun Memory.toEntity(): MemoryEntity {
     val tagString = tags.joinToString(",") { it.value }
 
+    val entitiesJson = try {
+        json.encodeToString(entities)
+    } catch (_: Exception) {
+        "[]"
+    }
+
+    val actionsJson = try {
+        json.encodeToString(actions)
+    } catch (_: Exception) {
+        "[]"
+    }
+
     return MemoryEntity(
         id = id,
         imageUrl = imageUrl,
@@ -60,8 +102,8 @@ fun Memory.toEntity(): MemoryEntity {
         overallConfidence = overallConfidence,
         detectedLanguage = detectedLanguage,
         tags = tagString,
-        entities = "[]",
-        actions = "[]",
+        entities = entitiesJson,
+        actions = actionsJson,
         suggestedReminders = "[]",
         relatedCategories = "[]",
         extractedDate = extractedDate?.toString(),

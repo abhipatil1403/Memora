@@ -30,12 +30,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import com.memora.core.ui.theme.MemoraTheme
 
 @Composable
@@ -44,9 +49,15 @@ fun ProfileScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToReminders: () -> Unit,
     onNavigateToCollections: () -> Unit,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    viewModel: ProfileViewModel = hiltViewModel()
 ) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = MemoraTheme.colors
+
+    val userName = state.user?.displayName?.takeIf { it.isNotBlank() } ?: "Memora User"
+    val userEmail = state.user?.email?.takeIf { it.isNotBlank() } ?: "Local Account"
+    val avatarInitial = userName.firstOrNull()?.uppercase() ?: "M"
 
     LazyColumn(
         modifier = Modifier
@@ -89,30 +100,39 @@ fun ProfileScreen(
                         .background(colors.primaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        "A",
-                        style = MemoraTheme.typography.display,
-                        color = colors.primary,
-                        fontWeight = FontWeight.Bold
-                    )
+                    if (!state.user?.photoUrl.isNull_or_blank()) {
+                        AsyncImage(
+                            model = state.user?.photoUrl,
+                            contentDescription = userName,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Text(
+                            avatarInitial,
+                            style = MemoraTheme.typography.display,
+                            color = colors.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
                 Spacer(Modifier.height(MemoraTheme.spacing.space4))
                 Text(
-                    "Abhi Patil",
+                    userName,
                     style = MemoraTheme.typography.title,
                     color = colors.textPrimary,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(MemoraTheme.spacing.space1))
                 Text(
-                    "abhi@memora.app",
+                    userEmail,
                     style = MemoraTheme.typography.body,
                     color = colors.textSecondary
                 )
             }
         }
 
-        // Stats row
+        // Dynamic Stats row
         item {
             Row(
                 modifier = Modifier
@@ -123,9 +143,9 @@ fun ProfileScreen(
                     .padding(MemoraTheme.spacing.space5),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                StatItem("47", "Memories")
-                StatItem("12", "Collections")
-                StatItem("3", "Reminders")
+                StatItem("${state.memoryCount}", "Memories")
+                StatItem("${state.collectionCount}", "Collections")
+                StatItem("${state.reminderCount}", "Reminders")
             }
         }
 
@@ -175,7 +195,7 @@ fun ProfileScreen(
             ProfileMenuItem(
                 icon = Icons.AutoMirrored.Outlined.Logout,
                 label = "Sign Out",
-                onClick = onSignOut,
+                onClick = { viewModel.signOut(onSignOut) },
                 tint = colors.error
             )
         }
@@ -183,6 +203,8 @@ fun ProfileScreen(
         item { Spacer(Modifier.height(MemoraTheme.spacing.space10)) }
     }
 }
+
+private fun String?.isNull_or_blank(): Boolean = this == null || this.isBlank()
 
 @Composable
 private fun StatItem(value: String, label: String) {

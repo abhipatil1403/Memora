@@ -51,9 +51,14 @@ import com.memora.core.ui.theme.MemoraTheme
 
 @Composable
 fun ProcessingScreen(
+    imageId: String,
     onNavigateToResult: (String) -> Unit,
     viewModel: ProcessingViewModel = hiltViewModel()
 ) {
+    androidx.compose.runtime.LaunchedEffect(imageId) {
+        viewModel.startProcessing(imageId)
+    }
+    
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = MemoraTheme.colors
 

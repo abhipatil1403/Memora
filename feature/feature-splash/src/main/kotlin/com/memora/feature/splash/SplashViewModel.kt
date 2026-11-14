@@ -2,6 +2,7 @@ package com.memora.feature.splash
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.memora.core.firebase.auth.FirebaseAuthManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +19,7 @@ sealed class SplashDestination {
 
 @HiltViewModel
 class SplashViewModel @Inject constructor(
-    // In production: inject AuthRepository + SettingsDataStore to check auth state
+    private val authManager: FirebaseAuthManager
 ) : ViewModel() {
 
     private val _destination = MutableStateFlow<SplashDestination>(SplashDestination.Loading)
@@ -26,11 +27,14 @@ class SplashViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            // Simulate initialization: check auth, preload, etc.
-            delay(1600L)
-            // Skip onboarding — go directly to Auth or Home
-            // In production: check if user is authenticated
-            _destination.value = SplashDestination.Auth
+            // Simulate minimum splash delay
+            delay(1000L)
+            
+            if (authManager.getCurrentUser() != null) {
+                _destination.value = SplashDestination.Home
+            } else {
+                _destination.value = SplashDestination.Auth
+            }
         }
     }
 }

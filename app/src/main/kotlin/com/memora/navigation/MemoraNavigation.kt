@@ -84,6 +84,7 @@ fun MemoraNavigation(startIntentAction: String? = null) {
                     onNavigateToLibrary = { backStack.add(LibraryKey) },
                     onNavigateToSearch = { backStack.add(SearchKey) },
                     onNavigateToProfile = { backStack.add(ProfileKey) },
+                    onNavigateToCollections = { backStack.add(CollectionsKey) },
                     modifier = Modifier.safeDrawingPadding()
                 )
             }
@@ -100,8 +101,9 @@ fun MemoraNavigation(startIntentAction: String? = null) {
             }
 
             // ── Processing ──
-            entry<ProcessingKey> {
+            entry<ProcessingKey> { key ->
                 ProcessingScreen(
+                    imageId = key.imageId,
                     onNavigateToResult = { memoryId ->
                         backStack.removeLastOrNull()
                         backStack.add(ResultKey(memoryId))
@@ -129,8 +131,9 @@ fun MemoraNavigation(startIntentAction: String? = null) {
             }
 
             // ── Memory Detail ──
-            entry<MemoryDetailKey> {
+            entry<MemoryDetailKey> { key ->
                 MemoryDetailScreen(
+                    memoryId = key.memoryId,
                     onNavigateBack = { backStack.removeLastOrNull() }
                 )
             }
@@ -139,7 +142,7 @@ fun MemoraNavigation(startIntentAction: String? = null) {
             entry<CollectionsKey> {
                 CollectionsScreen(
                     onNavigateBack = { backStack.removeLastOrNull() },
-                    onCollectionClick = { /* navigate to filtered library */ }
+                    onCollectionClick = { _ -> backStack.add(LibraryKey) }
                 )
             }
 

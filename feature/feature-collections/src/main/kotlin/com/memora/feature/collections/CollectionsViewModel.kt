@@ -2,13 +2,16 @@ package com.memora.feature.collections
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.memora.core.model.*
+import com.memora.core.database.repository.MemoryRepository
+import com.memora.core.model.Category
+import com.memora.core.model.CollectionType
+import com.memora.core.model.SmartCollection
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.ZonedDateTime
 import javax.inject.Inject
 
 data class CollectionsUiState(
@@ -17,7 +20,9 @@ data class CollectionsUiState(
 )
 
 @HiltViewModel
-class CollectionsViewModel @Inject constructor() : ViewModel() {
+class CollectionsViewModel @Inject constructor(
+    private val memoryRepository: MemoryRepository
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CollectionsUiState())
     val uiState: StateFlow<CollectionsUiState> = _uiState.asStateFlow()
@@ -28,22 +33,26 @@ class CollectionsViewModel @Inject constructor() : ViewModel() {
 
     private fun loadCollections() {
         viewModelScope.launch {
-            delay(400)
-            _uiState.value = CollectionsUiState(
-                isLoading = false,
-                collections = listOf(
-                    SmartCollection(CollectionType.TODAY, "Today", 3, "calendar_today"),
-                    SmartCollection(CollectionType.THIS_WEEK, "This Week", 12, "date_range"),
-                    SmartCollection(CollectionType.COLLEGE, "College", 18, "school"),
-                    SmartCollection(CollectionType.DOCUMENTS, "Documents", 7, "description"),
-                    SmartCollection(CollectionType.RECEIPTS, "Receipts", 8, "receipt_long"),
-                    SmartCollection(CollectionType.BUSINESS, "Business", 4, "work"),
-                    SmartCollection(CollectionType.MEDICAL, "Medical", 3, "local_hospital"),
-                    SmartCollection(CollectionType.IMPORTANT, "Important", 5, "star"),
-                    SmartCollection(CollectionType.FAVORITES, "Favorites", 4, "favorite"),
-                    SmartCollection(CollectionType.ARCHIVED, "Archived", 2, "archive")
+            memoryRepository.getAllMemories().collect { memories ->
+                val now = ZonedDateTime.now()
+                val today = now.toLocalDate().atStartOfDay(now.zone).toInstant()
+                val week = now.toLocalDate().minusDays((now.dayOfWeek.value - 1).toLong()).atStartOfDay(now.zone).toInstant()
+
+                _uiState.value = CollectionsUiState(
+                    isLoading = false,
+                    collections = listOf(
+                        SmartCollection(CollectionType.TODAY, "Today", memories.count { it.createdAt >= today }, "calendar_today"),
+                        SmartCollection(CollectionType.THIS_WEEK, "This Week", memories.count { it.createdAt >= week }, "date_range"),
+                        SmartCollection(CollectionType.RECEIPTS, "Receipts", memories.count { it.category == Category.RECEIPT }, "receipt_long"),
+                        SmartCollection(CollectionType.DOCUMENTS, "Documents", memories.count { it.category == Category.DOCUMENT }, "description"),
+                        SmartCollection(CollectionType.COLLEGE, "College", memories.count { it.category in listOf(Category.WHITEBOARD, Category.NOTICE, Category.TIMETABLE, Category.CERTIFICATE) }, "school"),
+                        SmartCollection(CollectionType.BUSINESS, "Business", memories.count { it.category == Category.CARD }, "work"),
+                        SmartCollection(CollectionType.MEDICAL, "Medical", memories.count { it.category == Category.PRESCRIPTION }, "local_hospital"),
+                        SmartCollection(CollectionType.IMPORTANT, "Important", memories.count { it.importance >= 0.8 }, "star"),
+                        SmartCollection(CollectionType.FAVORITES, "Favorites", memories.count { it.isFavorite }, "favorite")
+                    )
                 )
-            )
+            }
         }
     }
 }

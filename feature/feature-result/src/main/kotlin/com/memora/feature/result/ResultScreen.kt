@@ -1,10 +1,16 @@
 package com.memora.feature.result
 
+import android.content.Context
+import android.content.Intent
+import android.provider.CalendarContract
+import android.provider.ContactsContract
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,14 +61,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.memora.core.ui.components.MemoraButton
+import com.memora.core.ui.util.MemoraIntents
 import com.memora.core.ui.theme.MemoraTheme
 import kotlinx.coroutines.delay
 
@@ -300,6 +309,7 @@ private fun EntityCategoryBlock(
     values: List<String>
 ) {
     val colors = MemoraTheme.colors
+    val context = LocalContext.current
     val displayName = getCategoryDisplayName(categoryKey)
     val icon = getCategoryIcon(categoryKey)
 
@@ -341,22 +351,60 @@ private fun EntityCategoryBlock(
         Spacer(modifier = Modifier.height(MemoraTheme.spacing.space3))
 
         values.forEach { itemValue ->
+            val actionLabel = actionLabelFor(categoryKey)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 3.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .background(colors.background)
+                    .then(
+                        if (actionLabel != null) Modifier.clickable {
+                            handleEntityAction(context, categoryKey, itemValue)
+                        } else Modifier
+                    )
                     .padding(horizontal = MemoraTheme.spacing.space3, vertical = MemoraTheme.spacing.space2)
             ) {
-                Text(
-                    text = itemValue,
-                    style = MemoraTheme.typography.bodySmall,
-                    color = colors.textPrimary,
-                    fontWeight = FontWeight.Medium
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = itemValue,
+                        style = MemoraTheme.typography.bodySmall,
+                        color = colors.textPrimary,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (actionLabel != null) {
+                        Text(
+                            text = actionLabel,
+                            style = MemoraTheme.typography.caption,
+                            color = colors.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
             }
         }
+    }
+}
+
+private fun actionLabelFor(key: String): String? = when (key.uppercase()) {
+    "URL", "QR_CONTENT" -> "Open"
+    "PHONE" -> "Call"
+    "EMAIL" -> "Email"
+    "LOCATION" -> "Maps"
+    "DATE", "EVENT", "REMINDER", "ACTION_ITEM" -> "Add to calendar"
+    "MEETING" -> "Join"
+    else -> null
+}
+
+/** Opens a system integration screen so the user remains in control of private data. */
+private fun handleEntityAction(context: Context, key: String, value: String) {
+    when (key.uppercase()) {
+        "URL", "QR_CONTENT", "MEETING" -> MemoraIntents.openUrl(context, value)
+        "PHONE" -> MemoraIntents.dialPhone(context, value)
+        "EMAIL" -> MemoraIntents.sendEmail(context, value)
+        "LOCATION" -> MemoraIntents.openMaps(context, value)
+        "DATE", "EVENT", "REMINDER", "ACTION_ITEM" -> MemoraIntents.addToCalendar(context, value)
     }
 }
 
@@ -377,6 +425,17 @@ private fun getCategoryDisplayName(key: String): String {
         "MEDICINE" -> "Medicine"
         "TIME" -> "Time"
         "URL" -> "URL"
+        "IMAGE_TYPE" -> "Image type"
+        "DOCUMENT_TYPE" -> "Document type"
+        "TITLE" -> "Detected title"
+        "SUMMARY" -> "Summary"
+        "ACTION_ITEM" -> "Action items"
+        "REMINDER" -> "Reminders"
+        "MEETING" -> "Meetings"
+        "QR_CONTENT" -> "QR / barcode"
+        "REFERENCE_NUMBER" -> "Reference numbers"
+        "ACCOUNT_NUMBER" -> "Account numbers"
+        "SOCIAL_HANDLE" -> "Social handles"
         else -> key.lowercase().replaceFirstChar { it.uppercase() }
     }
 }
@@ -396,6 +455,11 @@ private fun getCategoryIcon(key: String): ImageVector {
         "MEDICINE" -> Icons.Outlined.MedicalServices
         "TIME" -> Icons.Outlined.CalendarToday
         "URL" -> Icons.Outlined.Link
+        "IMAGE_TYPE", "DOCUMENT_TYPE" -> Icons.Outlined.Category
+        "TITLE", "SUMMARY" -> Icons.Outlined.Info
+        "ACTION_ITEM", "REMINDER" -> Icons.Outlined.CalendarToday
+        "MEETING" -> Icons.Outlined.Link
+        "QR_CONTENT", "REFERENCE_NUMBER", "ACCOUNT_NUMBER", "SOCIAL_HANDLE" -> Icons.Outlined.Info
         else -> Icons.Outlined.Info
     }
 }

@@ -1,9 +1,13 @@
 package com.memora.core.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class EntityType {
     DATE, CONTACT, ADDRESS, URL, AMOUNT, QR_CODE
 }
 
+@Serializable
 data class ExtractedEntity(
     val type: EntityType,
     val value: String,

@@ -31,6 +31,7 @@ kotlin {
 dependencies {
     implementation(project(":core:core-ui"))
     implementation(project(":core:core-common"))
+    implementation(project(":core:core-database"))
     implementation(project(":core:core-model"))
     implementation(libs.coil.compose)
 

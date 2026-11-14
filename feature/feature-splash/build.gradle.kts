@@ -1,4 +1,4 @@
-﻿plugins {
+plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
@@ -31,8 +31,8 @@ kotlin {
 dependencies {
     implementation(project(":core:core-ui"))
     implementation(project(":core:core-common"))
-
-
+    implementation(project(":core:core-firebase"))
+    implementation(project(":core:core-model"))
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)

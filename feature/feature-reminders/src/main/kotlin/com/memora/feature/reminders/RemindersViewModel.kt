@@ -2,13 +2,15 @@ package com.memora.feature.reminders
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.memora.core.common.reminder.LocalReminderScheduler
+import com.memora.core.database.dao.ReminderDao
+import com.memora.core.database.entity.ReminderEntity
 import com.memora.core.model.Reminder
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Instant
 import javax.inject.Inject
@@ -20,7 +22,10 @@ data class RemindersUiState(
 )
 
 @HiltViewModel
-class RemindersViewModel @Inject constructor() : ViewModel() {
+class RemindersViewModel @Inject constructor(
+    private val reminderDao: ReminderDao,
+    private val localReminderScheduler: LocalReminderScheduler
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RemindersUiState())
     val uiState: StateFlow<RemindersUiState> = _uiState.asStateFlow()
@@ -28,30 +33,63 @@ class RemindersViewModel @Inject constructor() : ViewModel() {
     init { loadReminders() }
 
     fun completeReminder(id: String) {
-        _uiState.update { state ->
-            val item = state.upcoming.find { it.id == id } ?: return@update state
-            state.copy(
-                upcoming = state.upcoming.filter { it.id != id },
-                past = listOf(item.copy(isCompleted = true)) + state.past
-            )
+        viewModelScope.launch {
+            reminderDao.completeReminder(id)
+            localReminderScheduler.cancel(id)
+        }
+    }
+
+    /** Persists and schedules a reminder locally; it does not require Firebase or a network. */
+    fun createReminder(reminder: Reminder) {
+        viewModelScope.launch {
+            reminderDao.insertReminder(reminder.toEntity())
+            if (!reminder.isCompleted) {
+                localReminderScheduler.schedule(
+                    id = reminder.id,
+                    title = reminder.title,
+                    description = reminder.description,
+                    triggerAtMillis = reminder.dateTime.toEpochMilli()
+                )
+            }
         }
     }
 
     private fun loadReminders() {
         viewModelScope.launch {
-            delay(400)
-            val now = Instant.now()
-            _uiState.value = RemindersUiState(
-                isLoading = false,
-                upcoming = listOf(
-                    Reminder("r1", "1", "Assignment 3 Due", "ML course assignment", Instant.ofEpochMilli(now.toEpochMilli() + 86400000 * 9), false, "ai_suggested", now, now),
-                    Reminder("r2", "4", "Dr. Sharma Follow-up", "Blood pressure check", Instant.ofEpochMilli(now.toEpochMilli() + 86400000 * 14), false, "ai_suggested", now, now),
-                    Reminder("r3", "7", "Return Library Books", "Before Aug 10 deadline", Instant.ofEpochMilli(now.toEpochMilli() + 86400000 * 4), false, "ai_suggested", now, now),
-                ),
-                past = listOf(
-                    Reminder("r4", "3", "Hackathon Registration", "TechFest 2026", Instant.ofEpochMilli(now.toEpochMilli() - 86400000), true, "user_created", now, now),
+            combine(
+                reminderDao.getUpcomingReminders(),
+                reminderDao.getPastReminders()
+            ) { upcoming, past ->
+                RemindersUiState(
+                    upcoming = upcoming.map { it.toDomain() },
+                    past = past.map { it.toDomain() },
+                    isLoading = false
                 )
-            )
+            }.collect { _uiState.value = it }
         }
     }
 }
+
+private fun Reminder.toEntity() = ReminderEntity(
+    id = id,
+    memoryId = memoryId,
+    title = title,
+    description = description,
+    dateTime = dateTime.toEpochMilli(),
+    isCompleted = isCompleted,
+    source = source,
+    createdAt = createdAt.toEpochMilli(),
+    updatedAt = updatedAt.toEpochMilli()
+)
+
+private fun ReminderEntity.toDomain() = Reminder(
+    id = id,
+    memoryId = memoryId,
+    title = title,
+    description = description,
+    dateTime = Instant.ofEpochMilli(dateTime),
+    isCompleted = isCompleted,
+    source = source,
+    createdAt = Instant.ofEpochMilli(createdAt),
+    updatedAt = Instant.ofEpochMilli(updatedAt)
+)

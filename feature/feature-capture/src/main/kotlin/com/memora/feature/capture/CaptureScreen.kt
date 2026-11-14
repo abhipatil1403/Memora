@@ -131,7 +131,10 @@ fun CaptureScreen(
     }
 
     LaunchedEffect(navigateId) {
-        navigateId?.let { id -> onNavigateToProcessing(id) }
+        navigateId?.let { id -> 
+            viewModel.clearNavigationState()
+            onNavigateToProcessing(id) 
+        }
     }
 
     Box(

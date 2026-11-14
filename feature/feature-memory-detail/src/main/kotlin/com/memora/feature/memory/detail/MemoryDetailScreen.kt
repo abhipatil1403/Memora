@@ -49,6 +49,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,15 +65,23 @@ import com.memora.core.model.MemoryVersion
 import com.memora.core.model.SmartAction
 import com.memora.core.ui.components.MemoraConfidenceBadge
 import com.memora.core.ui.theme.MemoraTheme
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
+import com.memora.core.ui.util.MemoraIntents
+import com.memora.core.model.ActionType
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MemoryDetailScreen(
+    memoryId: String,
     onNavigateBack: () -> Unit,
     viewModel: MemoryDetailViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = MemoraTheme.colors
+    val context = LocalContext.current
+    LaunchedEffect(memoryId) { viewModel.loadMemory(memoryId) }
 
     if (state.isLoading) {
         Box(
@@ -125,23 +134,25 @@ fun MemoryDetailScreen(
             }
         }
 
-        // Image placeholder
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .padding(horizontal = MemoraTheme.spacing.space4)
-                    .clip(MemoraTheme.shapes.large)
-                    .background(colors.primaryContainer.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Outlined.Image,
-                    contentDescription = "Image preview",
-                    tint = colors.primary.copy(alpha = 0.3f),
-                    modifier = Modifier.size(48.dp)
-                )
+        // Image Display
+        if (memory.imageUrl.isNotBlank()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp)
+                        .padding(horizontal = MemoraTheme.spacing.space4)
+                        .clip(MemoraTheme.shapes.large)
+                        .background(colors.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = memory.imageUrl,
+                        contentDescription = memory.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
 
@@ -220,7 +231,18 @@ fun MemoryDetailScreen(
         if (memory.actions.isNotEmpty()) {
             item { SectionHeader("Smart Actions") }
             items(memory.actions) { action ->
-                DetailActionRow(action = action, onClick = { /* handle */ })
+                DetailActionRow(
+                    action = action,
+                    onClick = {
+                        when (action.type) {
+                            ActionType.CALL -> MemoraIntents.dialPhone(context, action.value)
+                            ActionType.OPEN_URL, ActionType.OPEN_LINK -> MemoraIntents.openUrl(context, action.value)
+                            ActionType.EMAIL -> MemoraIntents.sendEmail(context, action.value)
+                            ActionType.OPEN_MAPS -> MemoraIntents.openMaps(context, action.value)
+                            ActionType.ADD_REMINDER -> MemoraIntents.addToCalendar(context, action.label, action.value)
+                        }
+                    }
+                )
             }
         }
 
@@ -330,6 +352,7 @@ private fun SectionHeader(title: String) {
 @Composable
 private fun DetailEntityRow(entity: ExtractedEntity) {
     val colors = MemoraTheme.colors
+    val context = LocalContext.current
     val icon = when (entity.type) {
         EntityType.DATE -> Icons.Outlined.CalendarToday
         EntityType.CONTACT -> Icons.Outlined.Person
@@ -339,12 +362,31 @@ private fun DetailEntityRow(entity: ExtractedEntity) {
         EntityType.QR_CODE -> Icons.Outlined.QrCode2
     }
 
+    val isClickable = entity.type in listOf(EntityType.DATE, EntityType.CONTACT, EntityType.ADDRESS, EntityType.URL, EntityType.QR_CODE)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = MemoraTheme.spacing.space4, vertical = MemoraTheme.spacing.space1)
             .clip(MemoraTheme.shapes.medium)
             .background(colors.surfaceVariant)
+            .then(
+                if (isClickable) Modifier.clickable {
+                    when (entity.type) {
+                        EntityType.URL, EntityType.QR_CODE -> MemoraIntents.openUrl(context, entity.value)
+                        EntityType.ADDRESS -> MemoraIntents.openMaps(context, entity.value)
+                        EntityType.DATE -> MemoraIntents.addToCalendar(context, entity.label ?: "Event", entity.value)
+                        EntityType.CONTACT -> {
+                            if (entity.value.contains("@")) {
+                                MemoraIntents.sendEmail(context, entity.value)
+                            } else if (entity.value.any { it.isDigit() }) {
+                                MemoraIntents.dialPhone(context, entity.value)
+                            }
+                        }
+                        else -> {}
+                    }
+                } else Modifier
+            )
             .padding(MemoraTheme.spacing.space3),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -381,7 +423,7 @@ private fun DetailActionRow(action: SmartAction, onClick: () -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = MemoraTheme.spacing.space4, vertical = MemoraTheme.spacing.space1)
             .clip(MemoraTheme.shapes.medium)
-            .background(colors.primary.copy(alpha = 0.06f))
+            .background(colors.primary.copy(alpha = 0.08f))
             .clickable(onClick = onClick)
             .padding(MemoraTheme.spacing.space3),
         verticalAlignment = Alignment.CenterVertically
@@ -397,7 +439,14 @@ private fun DetailActionRow(action: SmartAction, onClick: () -> Unit) {
             action.label,
             style = MemoraTheme.typography.body,
             color = colors.primary,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = "Tap to act",
+            style = MemoraTheme.typography.caption,
+            color = colors.primary.copy(alpha = 0.7f),
+            fontWeight = FontWeight.Medium
         )
     }
 }

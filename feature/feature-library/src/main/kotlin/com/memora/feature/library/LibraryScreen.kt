@@ -44,6 +44,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import com.memora.core.model.Category
 import com.memora.core.model.Memory
 import com.memora.core.ui.components.MemoraConfidenceBadge
@@ -155,21 +157,30 @@ private fun LibraryCard(memory: Memory, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(MemoraTheme.spacing.space3)
     ) {
-        // Thumbnail placeholder
+        // Thumbnail
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(100.dp)
+                .height(110.dp)
                 .clip(MemoraTheme.shapes.medium)
-                .background(colors.primaryContainer.copy(alpha = 0.2f)),
+                .background(colors.surfaceVariant),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = memory.category.displayName.first().toString(),
-                style = MemoraTheme.typography.title,
-                color = colors.primary.copy(alpha = 0.4f),
-                fontWeight = FontWeight.Bold
-            )
+            if (memory.imageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = memory.imageUrl,
+                    contentDescription = memory.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(
+                    text = memory.category.displayName.first().toString(),
+                    style = MemoraTheme.typography.title,
+                    color = colors.primary.copy(alpha = 0.4f),
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(MemoraTheme.spacing.space3))

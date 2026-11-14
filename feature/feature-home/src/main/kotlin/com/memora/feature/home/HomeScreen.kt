@@ -30,7 +30,7 @@ import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Star
@@ -54,6 +54,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import coil3.compose.AsyncImage
 import com.memora.core.model.Memory
 import com.memora.core.model.SmartCollection
 import com.memora.core.ui.components.MemoraConfidenceBadge
@@ -68,7 +73,7 @@ private fun mapCollectionIcon(iconName: String): ImageVector {
         "calendar_today" -> Icons.Outlined.CalendarToday
         "date_range" -> Icons.Outlined.DateRange
         "school" -> Icons.Outlined.School
-        "receipt_long" -> Icons.Outlined.ReceiptLong
+        "receipt_long" -> Icons.AutoMirrored.Outlined.ReceiptLong
         "star" -> Icons.Outlined.Star
         "favorite" -> Icons.Outlined.Favorite
         else -> Icons.Outlined.Star
@@ -82,6 +87,7 @@ fun HomeScreen(
     onNavigateToLibrary: () -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToProfile: () -> Unit,
+    onNavigateToCollections: () -> Unit = onNavigateToLibrary,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -133,7 +139,7 @@ fun HomeScreen(
                 item {
                     SmartCollectionsRow(
                         collections = state.collections,
-                        onCollectionClick = { /* navigate to collection */ }
+                        onCollectionClick = { onNavigateToCollections() }
                     )
                 }
 
@@ -159,6 +165,44 @@ fun HomeScreen(
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.clickable { onNavigateToLibrary() }
                         )
+                    }
+                }
+
+                // Empty state if no memories
+                if (state.recentMemories.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = MemoraTheme.spacing.space4)
+                                .clip(MemoraTheme.shapes.large)
+                                .background(colors.surfaceVariant.copy(alpha = 0.5f))
+                                .padding(MemoraTheme.spacing.space6),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    Icons.Outlined.CameraAlt,
+                                    contentDescription = null,
+                                    tint = colors.primary.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(44.dp)
+                                )
+                                Spacer(Modifier.height(MemoraTheme.spacing.space3))
+                                Text(
+                                    text = "No memories saved yet",
+                                    style = MemoraTheme.typography.subheading,
+                                    color = colors.textPrimary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(Modifier.height(MemoraTheme.spacing.space1))
+                                Text(
+                                    text = "Tap the + button below to scan your first document, receipt, or note!",
+                                    style = MemoraTheme.typography.bodySmall,
+                                    color = colors.textSecondary,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -320,55 +364,84 @@ private fun MemoryCard(
             .clickable(onClick = onClick)
             .padding(MemoraTheme.spacing.space4)
     ) {
-        // Category pill + Confidence
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(MemoraTheme.spacing.space3)
         ) {
-            Text(
-                text = memory.category.displayName,
-                style = MemoraTheme.typography.caption,
-                color = colors.primary,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .background(
-                        colors.primaryContainer,
-                        shape = MemoraTheme.shapes.small
+            // Real Image Thumbnail
+            if (memory.imageUrl.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .size(76.dp)
+                        .clip(MemoraTheme.shapes.medium)
+                        .background(colors.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = memory.imageUrl,
+                        contentDescription = memory.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
                     )
-                    .padding(horizontal = MemoraTheme.spacing.space2, vertical = 3.dp)
-            )
-            MemoraConfidenceBadge(confidence = memory.overallConfidence)
+                }
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                // Category pill + Confidence
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = memory.category.displayName,
+                        style = MemoraTheme.typography.caption,
+                        color = colors.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .background(
+                                colors.primaryContainer,
+                                shape = MemoraTheme.shapes.small
+                            )
+                            .padding(horizontal = MemoraTheme.spacing.space2, vertical = 2.dp)
+                    )
+                    MemoraConfidenceBadge(confidence = memory.overallConfidence)
+                }
+
+                Spacer(modifier = Modifier.height(MemoraTheme.spacing.space2))
+
+                // Real Title
+                Text(
+                    text = memory.title,
+                    style = MemoraTheme.typography.subheading,
+                    color = colors.textPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // Real Summary
+                Text(
+                    text = memory.summary,
+                    style = MemoraTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(MemoraTheme.spacing.space3))
-
-        // Title
-        Text(
-            text = memory.title,
-            style = MemoraTheme.typography.subheading,
-            color = colors.textPrimary,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2
-        )
-
-        Spacer(modifier = Modifier.height(MemoraTheme.spacing.space1))
-
-        // Summary
-        Text(
-            text = memory.summary,
-            style = MemoraTheme.typography.bodySmall,
-            color = colors.textSecondary,
-            maxLines = 2
-        )
-
-        // Tags row
-        if (memory.tags.isNotEmpty()) {
+        // Dynamic Real Tags row (cleaned up)
+        val validTags = memory.tags.filter { it.value.isNotBlank() && it.value != "ai-extracted" }.take(3)
+        if (validTags.isNotEmpty()) {
             Spacer(modifier = Modifier.height(MemoraTheme.spacing.space3))
             Row(horizontalArrangement = Arrangement.spacedBy(MemoraTheme.spacing.space2)) {
-                memory.tags.take(3).forEach { tag ->
+                validTags.forEach { tag ->
+                    val tagText = if (tag.value.startsWith("#")) tag.value else "#${tag.value}"
                     Text(
-                        text = "#${tag.value}",
+                        text = tagText,
                         style = MemoraTheme.typography.caption,
                         color = colors.secondary,
                         modifier = Modifier
@@ -376,7 +449,7 @@ private fun MemoryCard(
                                 colors.secondary.copy(alpha = 0.08f),
                                 shape = MemoraTheme.shapes.small
                             )
-                            .padding(horizontal = MemoraTheme.spacing.space2, vertical = 3.dp)
+                            .padding(horizontal = MemoraTheme.spacing.space2, vertical = 2.dp)
                     )
                 }
             }

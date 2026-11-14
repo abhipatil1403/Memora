@@ -39,5 +39,5 @@ dependencies {
     implementation(project(":core:core-model"))
     implementation(project(":core:core-common"))
 
-    implementation(libs.coil.compose)
+    api(libs.coil.compose)
 }

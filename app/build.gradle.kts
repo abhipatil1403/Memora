@@ -60,6 +60,8 @@ dependencies {
   implementation(libs.timber)
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.auth)
+  implementation(libs.firebase.firestore)
+  implementation(libs.firebase.messaging)
 
   // Core Modules
   implementation(project(":core:core-model"))

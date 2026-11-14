@@ -63,4 +63,9 @@ class CaptureViewModel @Inject constructor(
             _navigateToProcessing.value = uri
         }
     }
+
+    fun clearNavigationState() {
+        _navigateToProcessing.value = null
+        _uiState.update { it.copy(capturedImageUri = null) } // Reset state so next open is clean
+    }
 }

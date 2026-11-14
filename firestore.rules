@@ -34,6 +34,12 @@ service cloud.firestore {
       match /reminders/{reminderId} {
         allow read, write, delete: if isOwner(userId);
       }
+
+      // FCM tokens are private to the signed-in user. The trusted notification
+      // backend uses the Firebase Admin SDK, which bypasses client rules.
+      match /deviceTokens/{token} {
+        allow read, write, delete: if isOwner(userId);
+      }
     }
   }
 }

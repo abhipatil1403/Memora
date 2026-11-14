@@ -47,17 +47,16 @@ class ProcessingViewModel @Inject constructor(
     private val extractedEntitiesHolder: ExtractedEntitiesHolder
 ) : ViewModel() {
 
-    private val imageUriString: String? = savedStateHandle.get<String>("imageId")
+    private var currentImageUriString: String? = null
 
     private val _uiState = MutableStateFlow(ProcessingUiState())
     val uiState: StateFlow<ProcessingUiState> = _uiState.asStateFlow()
 
-    init {
-        Timber.d("ProcessingViewModel init — imageUriString = %s", imageUriString)
-        startProcessing()
-    }
-
-    private fun startProcessing() {
+    fun startProcessing(imageUriString: String) {
+        if (currentImageUriString == imageUriString) return
+        currentImageUriString = imageUriString
+        Timber.d("ProcessingViewModel startProcessing — imageUriString = %s", imageUriString)
+        
         viewModelScope.launch {
             _uiState.update { it.copy(error = null) }
             val steps = _uiState.value.steps.toMutableList()
@@ -93,20 +92,28 @@ class ProcessingViewModel @Inject constructor(
                 Timber.d("API response code: %d, successful: %b", response.code(), response.isSuccessful)
                 val body = response.body()
                 if (response.isSuccessful && body != null) {
-                    Timber.d("API returned success=%b, entities=%s", body.success, body.entities)
-                    extractedEntities = body.entities
+                    if (body.success) {
+                        Timber.d("API returned success=%b, entities=%s", body.success, body.entities)
+                        extractedEntities = body.entities
+                    } else {
+                        val backendError = body.error ?: "The server processed the request but returned success=false."
+                        _uiState.update { it.copy(error = "Backend Error: $backendError") }
+                    }
                 } else {
                     val errorBody = response.errorBody()?.string()
                     Timber.e("API error response: code=%d, errorBody=%s", response.code(), errorBody)
+                    _uiState.update { it.copy(error = "Network Error: HTTP ${response.code()}. $errorBody") }
                 }
             } catch (e: Exception) {
                 Timber.e(e, "Backend API call failed with exception")
+                _uiState.update { it.copy(error = "Connection Error: ${e.message}") }
             }
 
-            // Fallback if backend server is not running locally
-            if (extractedEntities == null) {
-                Timber.w("Using FALLBACK entities because API returned null")
-                extractedEntities = createFallbackEntities()
+            if (_uiState.value.error != null || extractedEntities == null) {
+                // If there's an error, stop processing here. The UI will show the error state.
+                steps[1] = steps[1].copy(isActive = false, isComplete = false)
+                _uiState.update { it.copy(steps = steps.toList()) }
+                return@launch
             }
 
             steps[1] = steps[1].copy(isActive = false, isComplete = true)
@@ -138,10 +145,25 @@ class ProcessingViewModel @Inject constructor(
         return try {
             val uri = Uri.parse(uriString)
             Timber.d("readImageBytes: parsed URI = %s, scheme = %s", uri, uri.scheme)
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                val bytes = stream.readBytes()
-                Timber.d("readImageBytes: successfully read %d bytes", bytes.size)
-                bytes
+            
+            if (uri.scheme == "file") {
+                // Read directly from file
+                val file = java.io.File(uri.path!!)
+                if (file.exists()) {
+                    val bytes = file.readBytes()
+                    Timber.d("readImageBytes: successfully read %d bytes from file", bytes.size)
+                    bytes
+                } else {
+                    Timber.e("readImageBytes: file does not exist at path %s", uri.path)
+                    null
+                }
+            } else {
+                // Content resolver for content://
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val bytes = stream.readBytes()
+                    Timber.d("readImageBytes: successfully read %d bytes from content resolver", bytes.size)
+                    bytes
+                }
             }
         } catch (e: Exception) {
             Timber.e(e, "Error reading image bytes from URI: %s", uriString)
