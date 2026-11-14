@@ -19,19 +19,32 @@ ENV_PATH = BASE_DIR / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 # Read environment variables
-GROQ_API_KEY = os.getenv("GROQ_API_KEY_2", "").strip()
-MODEL = os.getenv("GROQ_MODEL", "").strip()
 DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
 
 logger = logging.getLogger(__name__)
 
-groq_client = None
-if not MODEL:
-    logger.warning("GROQ_MODEL is not configured")
-if GROQ_API_KEY:
-    groq_client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
-else:
-    logger.warning("GROQ_API_KEY_2 is not configured")
+
+def get_groq_api_keys() -> list[str]:
+    """
+    Collects all configured Groq API keys from environment variables.
+    Supports GROQ_API_KEY, GROQ_API_KEY_1, GROQ_API_KEY_2, GROQ_API_KEY_3,
+    and comma-separated key lists in any variable.
+    """
+    keys = []
+    for var in ["GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_1", "GROQ_API_KEY_3"]:
+        raw_val = os.getenv(var, "").strip()
+        if raw_val:
+            for item in raw_val.split(","):
+                k = item.strip().strip('"').strip("'")
+                if k and k != "your_groq_api_key_here" and k not in keys:
+                    keys.append(k)
+    return keys
+
+
+def get_groq_model() -> str:
+    """Returns the Groq Vision model to use, falling back to a sensible default."""
+    m = os.getenv("GROQ_MODEL", "").strip().strip('"').strip("'")
+    return m if m else "qwen/qwen3.8-27b"
 
 
 app = FastAPI(
@@ -132,21 +145,27 @@ def normalize_result(data):
 
 @app.get("/")
 def root():
+    keys = get_groq_api_keys()
+    model = get_groq_model()
     return {
         "message": "Memora AI API is running",
-        "model": MODEL,
+        "model": model,
+        "available_keys": len(keys),
         "env_loaded": ENV_PATH.exists()
     }
 
 
 @app.get("/health")
 def health():
-    ready = groq_client is not None and bool(MODEL)
+    keys = get_groq_api_keys()
+    model = get_groq_model()
+    ready = len(keys) > 0 and bool(model)
     return JSONResponse(status_code=200 if ready else 503, content={
         "status": "healthy" if ready else "unhealthy",
-        "model": MODEL,
+        "model": model,
         "provider": "groq",
-        "has_api_key": groq_client is not None
+        "available_keys": len(keys),
+        "has_api_key": len(keys) > 0
     })
 
 
@@ -186,63 +205,86 @@ async def extract_entities(
             quality=85
         )
 
-        if groq_client is None or not MODEL:
-            raise HTTPException(status_code=503, detail="Groq is not configured on the server.")
-        image_data_url = "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
-        response = groq_client.chat.completions.create(
-            model=MODEL,
-            temperature=0,
-            response_format={"type": "json_object"},
-            messages=[{"role": "system", "content": "Return valid JSON."}, {"role": "user", "content": [
-                {"type": "text", "text": PROMPT},
-                {"type": "image_url", "image_url": {"url": image_data_url}}
-            ]}]
-        )
-        raw_result = response.choices[0].message.content
-        extracted = json.loads(raw_result)
-        extracted = normalize_result(extracted)
+        keys = get_groq_api_keys()
+        model = get_groq_model()
 
-        return {
-            "success": True,
-            "filename": file.filename,
-            "entities": extracted
-        }
+        if not keys:
+            raise HTTPException(
+                status_code=503,
+                detail="No Groq API keys configured. Set GROQ_API_KEY in the Render dashboard."
+            )
+
+        image_data_url = "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+
+        last_error = None
+        for i, key in enumerate(keys):
+            try:
+                client = OpenAI(api_key=key, base_url="https://api.groq.com/openai/v1")
+                response = client.chat.completions.create(
+                    model=model,
+                    temperature=0,
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {"role": "system", "content": "Return valid JSON."},
+                        {"role": "user", "content": [
+                            {"type": "text", "text": PROMPT},
+                            {"type": "image_url", "image_url": {"url": image_data_url}}
+                        ]}
+                    ]
+                )
+                raw_result = response.choices[0].message.content
+                extracted = json.loads(raw_result)
+                extracted = normalize_result(extracted)
+
+                return {
+                    "success": True,
+                    "filename": file.filename,
+                    "entities": extracted
+                }
+
+            except APIStatusError as exc:
+                last_error = exc
+                logger.warning("Groq API key %d/%d failed with HTTP %s: %s", i + 1, len(keys), exc.status_code, exc.message)
+                continue
+            except APIConnectionError as exc:
+                last_error = exc
+                logger.warning("Groq connection failed for key %d/%d: %s", i + 1, len(keys), exc)
+                continue
+
+        # If all keys failed:
+        if isinstance(last_error, APIStatusError):
+            status = last_error.status_code
+            error_detail = last_error.message if hasattr(last_error, "message") else str(last_error)
+            logger.error("All Groq keys failed. Last error: HTTP %s: %s", status, error_detail)
+            return JSONResponse(status_code=status, content={
+                "success": False,
+                "filename": file.filename,
+                "error": f"Groq Error ({status}): {error_detail}. Please update GROQ_API_KEY in the Render dashboard.",
+                "entities": {key: [] for key in ENTITY_KEYS}
+            })
+        elif isinstance(last_error, APIConnectionError):
+            return JSONResponse(status_code=503, content={
+                "success": False,
+                "filename": file.filename,
+                "error": "Groq connection timed out. Please try again.",
+                "entities": {key: [] for key in ENTITY_KEYS}
+            })
+        else:
+            return JSONResponse(status_code=500, content={
+                "success": False,
+                "filename": file.filename,
+                "error": f"Extraction failed: {str(last_error)}",
+                "entities": {key: [] for key in ENTITY_KEYS}
+            })
 
     except HTTPException:
         raise
 
-    except APIStatusError as exc:
-        status = exc.status_code
-        logger.error("Groq API request failed: HTTP %s (%s)", status, type(exc).__name__)
-        messages = {
-            400: "Groq could not process this image. Please try another image.",
-            401: "Groq authentication failed. Please check the server configuration.",
-            429: "Groq rate limit reached. Please try again shortly.",
-            500: "Groq service encountered an error. Please try again.",
-            503: "Groq service is temporarily unavailable. Please try again.",
-        }
-        return JSONResponse(status_code=status, content={
-            "success": False,
-            "filename": file.filename,
-            "error": messages.get(status, "Groq request failed. Please try again."),
-            "entities": {key: [] for key in ENTITY_KEYS},
-        })
-
-    except APIConnectionError as exc:
-        logger.error("Groq API connection failed (%s)", type(exc).__name__)
-        return JSONResponse(status_code=503, content={
-            "success": False,
-            "filename": file.filename,
-            "error": "Groq service is temporarily unavailable. Please try again.",
-            "entities": {key: [] for key in ENTITY_KEYS},
-        })
-
     except Exception as e:
-        logger.error("Groq extraction failed (%s)", type(e).__name__)
-
-        return {
+        logger.error("Extraction failed: %s", type(e).__name__)
+        return JSONResponse(status_code=500, content={
             "success": False,
             "filename": file.filename if file else "unknown",
-            "error": "Image extraction failed. Please try again.",
-            "entities": { key: [] for key in ENTITY_KEYS }
-        }
+            "error": f"Image extraction failed: {str(e)}",
+            "entities": {key: [] for key in ENTITY_KEYS}
+        })
